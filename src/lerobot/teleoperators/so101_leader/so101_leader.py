@@ -54,9 +54,6 @@ class SO101Leader(Teleoperator):
             },
             calibration=self.calibration,
         )
-        # 如果有从文件加载的标定，就先下发给硬件
-        if self.calibration:
-            self.bus.write_calibration(self.calibration)
 
     @property
     def action_features(self) -> dict[str, type]:

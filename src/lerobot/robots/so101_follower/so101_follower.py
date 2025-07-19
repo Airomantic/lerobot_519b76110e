@@ -58,9 +58,6 @@ class SO101Follower(Robot):
             },
             calibration=self.calibration,
         )
-        # 如果有从文件加载的标定，就先下发给硬件
-        if self.calibration:
-            self.bus.write_calibration(self.calibration)
         self.cameras = make_cameras_from_configs(config.cameras)
 
     @property
