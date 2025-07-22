@@ -3,13 +3,13 @@
 python -m lerobot.record \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM2 \
-    --robot.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/data/calibration/robots/so101_follower \
-    --robot.id=calibration_follower_arm \
+    --robot.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/robots/so101_follower \
+    --robot.id=my_awesome_follower_arm \
     --robot.cameras="{top: {type: opencv, index_or_path: 4, width: 1280, height: 800, fps: 15}, laptop: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 15}}" \
     --teleop.type=so101_leader \
-    --teleop.port=/dev/ttyACM3 \
-    --teleop.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/data/calibration/teleoperators/so101_leader \
-    --teleop.id=calibration_leader_arm \
+    --teleop.port=/dev/ttyACM1 \
+    --teleop.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/teleoperators/so101_leader \
+    --teleop.id=my_awesome_leader_arm \
     --display_data=true \
     --dataset.repo_id=qing/0717_1 \
     --dataset.num_episodes=2 \
@@ -17,7 +17,8 @@ python -m lerobot.record \
     --dataset.episode_time_s=15 \
     --dataset.reset_time_s=5 \
     --dataset.push_to_hub=False \
-    --dataset.root=/home/qing/tianyi/code/lerobot_519b76110e/data/sampleRecord
+    --dataset.root=/home/qing/tianyi/code/lerobot_519b76110e/utilData/sampleRecord \
+    --resume=false
 
 
 : <<EOF
@@ -28,5 +29,34 @@ cp -r ~/.cache/huggingface/lerobot/calibration /home/qing/tianyi/code/lerobot_51
 
 # 使用校准文件时
 cp -r /home/qing/tianyi/code/lerobot_519b76110e/data/calibration ~/.cache/huggingface/lerobot
+
+# 单步调试
+
+            "program": "${workspaceFolder}/src/lerobot/record.py",
+            "args": [       
+                "--robot.type=so101_follower",
+                "--robot.port=/dev/ttyACM3",
+                "--robot.id=calibration_follower_arm",
+                "--robot.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/data/calibration/robots/so101_follower",
+                "--robot.cameras={top: {type: opencv, index_or_path: 8, width: 1280, height: 800, fps: 15}, laptop: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 15}}",
+                "--teleop.type=so101_leader",
+                "--teleop.port=/dev/ttyACM1",
+                "--teleop.id=calibration_leader_arm",
+                "--teleop.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/data/calibration/teleoperators/so101_leader",
+                "--display_data=true",
+                "--dataset.repo_id=waveHello/0719_1",
+                "--dataset.num_episodes=2",
+                "--dataset.single_task=Grasp a mineral water bottle and put it in the box of black",
+                "--dataset.episode_time_s=15",
+                "--dataset.reset_time_s=5",
+                "--dataset.push_to_hub=False",
+                "--dataset.root=/home/qing/tianyi/code/lerobot_519b76110e/data/sampleRecord",
+                // "--resume=false"     // 是否连接huggingface
+            ],
+            "env": {
+                // "PYTHONPATH": "${workspaceFolder}"
+                "PATH": "${env:PATH}:/home/qing/miniconda3/envs/gpu_lerobot_519b76110e/bin",
+                "HUGGINGFACE_HUB_OFFLINE": "1"      // 让 HF API 不联网，只用本地
+            },
 
 EOF
