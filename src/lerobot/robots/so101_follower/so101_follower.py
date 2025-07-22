@@ -103,6 +103,7 @@ class SO101Follower(Robot):
     @property
     def is_calibrated(self) -> bool:
         return self.bus.is_calibrated
+        # return True     # temp 主从臂允许一定的误差范围
 
     def calibrate(self) -> None:
         logger.info(f"\nRunning calibration of {self}")
