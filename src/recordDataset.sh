@@ -23,6 +23,7 @@ python -m lerobot.record \
 
 : <<EOF
 --dataset.root 这个路径会取代--dataset.repo_id 路径进行录制数据的存放
+我修改了一点代码，使得--dataset.repo_id=qing/0717_1 这种格式使用本地数据（而不需要连接huggingface）
 
 # github上推保存时
 cp -r ~/.cache/huggingface/lerobot/calibration /home/qing/tianyi/code/lerobot_519b76110e/data/
