@@ -184,6 +184,56 @@ def filter_path_args(fields_to_filter: str | list[str], args: Sequence[str] | No
 
     return filtered_args
 
+def parse_indexed_args(args: Sequence[str] | None = None) -> dict:
+
+    if args is None:
+        args = sys.argv[1:]
+
+    indexed_args = {}
+    for arg in args:
+        if "=" not in arg or not arg.startswith("--"):
+            continue
+        
+        # key, value = arg[2:].split("=", 1)  # Remove leading '--'
+        # 提取键值对
+        full_key = arg[2:].split("=", 1)[0]
+        value = arg.split("=", 1)[1]
+        
+        if "." in full_key:
+            parts = full_key.split(".")
+
+            if len(parts) > 1 and parts[1] in ["left", "right"]:
+
+                prefix = parts[0]                   # 这里的 parts[0] 是前缀 (e.g. "robot")
+                key = parts[1]                    # "left" 或 "right"
+                subkey = ".".join(parts[2:]) if len(parts) > 2 else ""
+
+
+                if prefix not in indexed_args:
+                    indexed_args[prefix] = {}
+                    
+                if "item" not in indexed_args[prefix]:
+                    indexed_args[prefix]["item"] = {}
+                    
+                if key not in indexed_args[prefix]["item"]:
+                    indexed_args[prefix]["item"][key] = {}
+                
+                if subkey:  # 如果有子键
+                    indexed_args[prefix]["item"][key][subkey] = value
+                else:  # 如果没有子键，可能是布尔值等
+                    indexed_args[prefix]["item"][key] = value
+            else:
+                # 非命名键参数
+                prefix = parts[0]
+                subkey = ".".join(parts[1:])
+                if prefix not in indexed_args:
+                    indexed_args[prefix] = {}
+                indexed_args[prefix][subkey] = value
+        else:
+             # 简单参数 (e.g. "display_data")
+            indexed_args[full_key] = value
+
+    return indexed_args
 
 def wrap(config_path: Path | None = None):
     """
@@ -205,7 +255,35 @@ def wrap(config_path: Path | None = None):
                 cfg = args[0]
                 args = args[1:]
             else:
-                cli_args = sys.argv[1:]
+                # 解析索引参数
+                indexed_args = parse_indexed_args()
+                cli_args = []
+                
+                # 处理非索引参数
+                non_indexed_args = indexed_args.get("non_indexed", {})
+                for key, value in non_indexed_args.items():
+                    cli_args.append(f"--{key}={value}")
+                    
+                # 处理索引参数
+                for prefix, indices in indexed_args.items():
+                    if prefix == "non_indexed":
+                        continue
+                    
+                    # 如果这是一个索引参数（包含'item'）
+                    if isinstance(indices, dict) and "item" in indices:
+                        for index, sub_args in indices["item"].items():
+                            for sub_key, sub_value in sub_args.items():
+                                cli_args.append(f"--{prefix}.{index}.{sub_key}={sub_value}")
+                                
+                    elif isinstance(indices, dict):
+                        # 如果这是一个非索引参数（没有'item'）
+                        for sub_key, sub_value in indices.items():
+                            cli_args.append(f"--{prefix}.{sub_key}={sub_value}")
+                    else:
+                        # 如果这是一个简单参数（没有'.'），如display_data是字符串
+                        cli_args.append(f"--{prefix}={indices}")
+                
+                # cli_args = sys.argv[1:]   # 原来没有left和right时
                 plugin_args = parse_plugin_args(PLUGIN_DISCOVERY_SUFFIX, cli_args)
                 for plugin_cli_arg, plugin_path in plugin_args.items():
                     try:

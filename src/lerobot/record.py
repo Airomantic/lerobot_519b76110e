@@ -130,10 +130,15 @@ class DatasetRecordConfig:
 
 @dataclass
 class RecordConfig:
-    robot: RobotConfig
     dataset: DatasetRecordConfig
-    # Whether to control the robot with a teleoperator
-    teleop: TeleoperatorConfig | None = None
+    # 支持左臂和右臂机器人配置
+    left_robot: RobotConfig | None = None
+    right_robot: RobotConfig | None = None
+    
+    # 支持左臂和右臂遥操作配置
+    left_teleop: TeleoperatorConfig | None = None
+    right_teleop: TeleoperatorConfig | None = None
+    
     # Whether to control the robot with a policy
     policy: PreTrainedConfig | None = None
     # Display all cameras on screen
@@ -144,6 +149,16 @@ class RecordConfig:
     resume: bool = False
 
     def __post_init__(self):
+        # 确保至少配置了一个机器人
+        if self.left_robot is None and self.right_robot is None:
+            raise ValueError("At least one robot must be configured")
+        
+        # 确保遥操作与机器人匹配
+        if self.left_teleop and not self.left_robot:
+            raise ValueError("Left teleoperator requires left robot configuration")
+        if self.right_teleop and not self.right_robot:
+            raise ValueError("Right teleoperator requires right robot configuration")
+        
         # HACK: We parse again the cli args here to get the pretrained path if there was one.
         policy_path = parser.get_path_arg("policy")
         if policy_path:
@@ -151,22 +166,55 @@ class RecordConfig:
             self.policy = PreTrainedConfig.from_pretrained(policy_path, cli_overrides=cli_overrides)
             self.policy.pretrained_path = policy_path
 
-        if self.teleop is None and self.policy is None:
-            raise ValueError("Choose a policy, a teleoperator or both to control the robot")
+        if self.left_teleop is None and self.right_teleop is None and self.policy is None:
+            raise ValueError("Choose a policy or teleoperator to control the robot(s)")
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:
         """This enables the parser to load config from the policy using `--policy.path=local/dir`"""
         return ["policy"]
 
-
+def reset_loop(
+    robots: list[tuple[str, Robot]],  # (side, robot) 元组列表
+    events: dict,
+    fps: int,
+    control_time_s: float,
+    display_data: bool = False
+):
+    """重置环境循环（不录制数据）"""
+    start_reset_t = time.perf_counter()
+    timestamp = 0.0
+    
+    while timestamp < control_time_s:
+        start_loop_t = time.perf_counter()
+        
+        if events["exit_early"]:
+            events["exit_early"] = False
+            break
+        
+        # 获取观测（仅用于可视化）
+        observations = {}
+        for side, robot in robots:
+            observations[side] = robot.get_observation()
+        
+        # 可视化
+        if display_data:
+            log_rerun_data(observations, {})
+        
+        # 控制帧率
+        dt_s = time.perf_counter() - start_loop_t
+        busy_wait(1 / fps - dt_s)
+        
+        timestamp = time.perf_counter() - start_reset_t
+        
 @safe_stop_image_writer
 def record_loop(
-    robot: Robot,
+    robots: list[tuple[str, Robot]],  # (side, robot) 元组列表
+    teleops: list[tuple[str, Teleoperator]],  # (side, teleop) 元组列表
     events: dict,
     fps: int,
     dataset: LeRobotDataset | None = None,
-    teleop: Teleoperator | List[Teleoperator] | None = None,
+    # teleop: Teleoperator | List[Teleoperator] | None = None,
     policy: PreTrainedPolicy | None = None,
     control_time_s: int | None = None,
     single_task: str | None = None,
@@ -175,22 +223,22 @@ def record_loop(
     if dataset is not None and dataset.fps != fps:
         raise ValueError(f"The dataset fps should be equal to requested fps ({dataset.fps} != {fps}).")
 
-    teleop_arm = teleop_keyboard = None
-    if isinstance(teleop, list):
-        teleop_keyboard = next((t for t in teleop if isinstance(t, KeyboardTeleop)), None)
-        teleop_arm = next(
-            (
-                t
-                for t in teleop
-                if isinstance(t, (so100_leader.SO100Leader, so101_leader.SO101Leader, koch_leader.KochLeader))
-            ),
-            None,
-        )
+    # teleop_arm = teleop_keyboard = None
+    # if isinstance(teleop, list):
+    #     teleop_keyboard = next((t for t in teleop if isinstance(t, KeyboardTeleop)), None)
+    #     teleop_arm = next(
+    #         (
+    #             t
+    #             for t in teleop
+    #             if isinstance(t, (so100_leader.SO100Leader, so101_leader.SO101Leader, koch_leader.KochLeader))
+    #         ),
+    #         None,
+    #     )
 
-        if not (teleop_arm and teleop_keyboard and len(teleop) == 2 and robot.name == "lekiwi_client"):
-            raise ValueError(
-                "For multi-teleop, the list must contain exactly one KeyboardTeleop and one arm teleoperator. Currently only supported for LeKiwi robot."
-            )
+    #     if not (teleop_arm and teleop_keyboard and len(teleop) == 2 and robot.name == "lekiwi_client"):
+    #         raise ValueError(
+    #             "For multi-teleop, the list must contain exactly one KeyboardTeleop and one arm teleoperator. Currently only supported for LeKiwi robot."
+    #         )
 
     # if policy is given it needs cleaning up
     if policy is not None:
@@ -198,59 +246,98 @@ def record_loop(
 
     timestamp = 0
     start_episode_t = time.perf_counter()
+    
+    # 创建遥操作字典便于查找
+    teleop_dict = {side: teleop for side, teleop in teleops}
+    
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
 
         if events["exit_early"]:
             events["exit_early"] = False
             break
+        
+        frame = {}
+        all_observations = {}
+        all_actions = {}
 
-        observation = robot.get_observation()
+        # 处理每个机器人
+        for side, robot in robots:
+            side_prefix = f"{side}_"
+            
+            # 获取观测
+            obs = robot.get_observation()
+            all_observations[side] = obs
+            
+            # 构建观测帧
+            for key, value in build_dataset_frame(dataset.features, obs, prefix="observation").items():
+                frame[f"{side_prefix}{key}"] = value
 
-        if policy is not None or dataset is not None:
-            observation_frame = build_dataset_frame(dataset.features, observation, prefix="observation")
+        # if policy is not None or dataset is not None:
+        #     observation_frame = build_dataset_frame(dataset.features, observation, prefix="observation")
 
         if policy is not None:
             action_values = predict_action(
-                observation_frame,
+                frame,  # 使用当前帧作为输入
                 policy,
                 get_safe_torch_device(policy.config.device),
                 policy.config.use_amp,
                 task=single_task,
                 robot_type=robot.robot_type,
             )
-            action = {key: action_values[i].item() for i, key in enumerate(robot.action_features)}
-        elif policy is None and isinstance(teleop, Teleoperator):
-            action = teleop.get_action()
-        elif policy is None and isinstance(teleop, list):
-            # TODO(pepijn, steven): clean the record loop for use of multiple robots (possibly with pipeline)
-            arm_action = teleop_arm.get_action()
-            arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
+            # action = {key: action_values[i].item() for i, key in enumerate(robot.action_features)}
+            
+            # 将策略动作分配到各个机器人
+            for i, (side, robot) in enumerate(robots):
+                side_actions = {}
+                for j, key in enumerate(robot.action_features):
+                    idx = i * len(robot.action_features) + j
+                    side_actions[key] = action_values[idx].item()
+                all_actions[side] = side_actions
+                
+        # elif policy is None and isinstance(teleop, Teleoperator):
+        #     action = teleop.get_action()
+        # elif policy is None and isinstance(teleop, list):
+        #     # TODO(pepijn, steven): clean the record loop for use of multiple robots (possibly with pipeline)
+        #     arm_action = teleop_arm.get_action()
+        #     arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
 
-            keyboard_action = teleop_keyboard.get_action()
-            base_action = robot._from_keyboard_to_base_action(keyboard_action)
+        #     keyboard_action = teleop_keyboard.get_action()
+        #     base_action = robot._from_keyboard_to_base_action(keyboard_action)
 
-            action = {**arm_action, **base_action} if len(base_action) > 0 else arm_action
+        #     action = {**arm_action, **base_action} if len(base_action) > 0 else arm_action
         else:
-            logging.info(
-                "No policy or teleoperator provided, skipping action generation."
-                "This is likely to happen when resetting the environment without a teleop device."
-                "The robot won't be at its rest position at the start of the next episode."
-            )
-            continue
+            # 使用遥操作生成动作
+            for side, teleop in teleops:
+                all_actions[side] = teleop.get_action()
 
         # Action can eventually be clipped using `max_relative_target`,
         # so action actually sent is saved in the dataset.
-        sent_action = robot.send_action(action)
+        # sent_action = robot.send_action(action)
+        # 发送动作给机器人并构建动作帧
+        for side, robot in robots:
+            side_prefix = f"{side}_"
+            if side in all_actions:
+                sent_action = robot.send_action(all_actions[side])
+                
+                # 构建动作帧
+                for key, value in build_dataset_frame(dataset.features, sent_action, prefix="action").items():
+                    frame[f"{side_prefix}{key}"] = value
+        
+        # 添加任务信息
+        frame["task"] = single_task
 
-        if dataset is not None:
-            action_frame = build_dataset_frame(dataset.features, sent_action, prefix="action")
-            frame = {**observation_frame, **action_frame}
-            dataset.add_frame(frame, task=single_task)
+        # if dataset is not None:
+        #     action_frame = build_dataset_frame(dataset.features, sent_action, prefix="action")
+        #     frame = {**observation_frame, **action_frame}
+        #     dataset.add_frame(frame, task=single_task)
+        # 添加到数据集
+        dataset.add_frame(frame, task=single_task)
 
         if display_data:
-            log_rerun_data(observation, action)
+            log_rerun_data(all_observations, all_actions)
 
+        # 控制帧率
         dt_s = time.perf_counter() - start_loop_t
         busy_wait(1 / fps - dt_s)
 
@@ -264,25 +351,63 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     if cfg.display_data:
         _init_rerun(session_name="recording")
 
-    robot = make_robot_from_config(cfg.robot)
-    teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
-
-    action_features = hw_to_dataset_features(robot.action_features, "action", cfg.dataset.video)
-    obs_features = hw_to_dataset_features(robot.observation_features, "observation", cfg.dataset.video)
+    # 创建机器人对象
+    robots = []
+    if cfg.left_robot:
+        robots.append(("left", make_robot_from_config(cfg.left_robot)))
+    if cfg.right_robot:
+        robots.append(("right", make_robot_from_config(cfg.right_robot)))
+        
+    # 创建遥操作对象
+    teleops = []
+    if cfg.left_teleop:
+        teleops.append(("left", make_teleoperator_from_config(cfg.left_teleop)))
+    if cfg.right_teleop:
+        teleops.append(("right", make_teleoperator_from_config(cfg.right_teleop)))
+        
+    # 合并特征集
+    action_features = {}
+    obs_features = {}
+    camera_count = 0
+    
+    for side, robot in robots:
+        side_prefix = f"{side}_"  # "left_" 或 "right_"
+        
+        # 动作特征
+        for key, feature in hw_to_dataset_features(robot.action_features, "action", cfg.dataset.video).items():
+            action_features[f"{side_prefix}{key}"] = feature
+        
+        # 观测特征
+        for key, feature in hw_to_dataset_features(robot.observation_features, "observation", cfg.dataset.video).items():
+            obs_features[f"{side_prefix}{key}"] = feature
+        
+        # 计算摄像头数量
+        if hasattr(robot, "cameras"):
+            camera_count += len(robot.cameras)
+    
     dataset_features = {**action_features, **obs_features}
+        
+    
+    # robot = make_robot_from_config(cfg.robot)
+    # teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
+
+    # action_features = hw_to_dataset_features(robot.action_features, "action", cfg.dataset.video)
+    # obs_features = hw_to_dataset_features(robot.observation_features, "observation", cfg.dataset.video)
+    # dataset_features = {**action_features, **obs_features}
 
     if cfg.resume:
-        dataset = LeRobotDataset(
-            cfg.dataset.repo_id,
-            root=cfg.dataset.root,
-        )
+        # dataset = LeRobotDataset(
+        #     cfg.dataset.repo_id,
+        #     root=cfg.dataset.root,
+        # )
 
-        if hasattr(robot, "cameras") and len(robot.cameras) > 0:
-            dataset.start_image_writer(
-                num_processes=cfg.dataset.num_image_writer_processes,
-                num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
-            )
-        sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
+        # if hasattr(robot, "cameras") and len(robot.cameras) > 0:
+        #     dataset.start_image_writer(
+        #         num_processes=cfg.dataset.num_image_writer_processes,
+        #         num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+        #     )
+        # sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
+        print("Resuming dataset recording...")
     else:
         # Create empty dataset or load existing saved episodes
         sanity_check_dataset_name(cfg.dataset.repo_id, cfg.policy)
@@ -290,18 +415,20 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             cfg.dataset.repo_id,
             cfg.dataset.fps,
             root=cfg.dataset.root,
-            robot_type=robot.name,
+            robot_type="dual_arm" if len(robots) > 1 else "single_arm",
             features=dataset_features,
             use_videos=cfg.dataset.video,
             image_writer_processes=cfg.dataset.num_image_writer_processes,
-            image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+            image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * camera_count,
         )
 
     # Load pretrained policy
     policy = None if cfg.policy is None else make_policy(cfg.policy, ds_meta=dataset.meta)
 
-    robot.connect()
-    if teleop is not None:
+    # 连接所有设备
+    for _, robot in robots:
+        robot.connect()
+    for _, teleop in teleops:
         teleop.connect()
 
     listener, events = init_keyboard_listener()
@@ -327,30 +454,32 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             (recorded_episodes < cfg.dataset.num_episodes - 1) or events["rerecord_episode"]
         ):
             log_say("Reset the environment", cfg.play_sounds)
-            record_loop(
+            reset_loop(
                 robot=robot,
                 events=events,
                 fps=cfg.dataset.fps,
-                teleop=teleop,
+                # teleop=teleop,
                 control_time_s=cfg.dataset.reset_time_s,
-                single_task=cfg.dataset.single_task,
+                # single_task=cfg.dataset.single_task,
                 display_data=cfg.display_data,
             )
 
-        if events["rerecord_episode"]:
-            log_say("Re-record episode", cfg.play_sounds)
-            events["rerecord_episode"] = False
-            events["exit_early"] = False
-            dataset.clear_episode_buffer()
-            continue
+        # if events["rerecord_episode"]:
+        #     log_say("Re-record episode", cfg.play_sounds)
+        #     events["rerecord_episode"] = False
+        #     events["exit_early"] = False
+        #     dataset.clear_episode_buffer()
+        #     continue
 
         dataset.save_episode()
         recorded_episodes += 1
 
     log_say("Stop recording", cfg.play_sounds, blocking=True)
 
-    robot.disconnect()
-    if teleop is not None:
+    # 断开所有设备连接
+    for _, robot in robots:
+        robot.disconnect()
+    for _, teleop in teleops:
         teleop.disconnect()
 
     if not is_headless() and listener is not None:
