@@ -28,7 +28,7 @@ outputs
 .DS_Store
 
 # VS Code
-.vscode
+# .vscode
 .devcontainer
 
 # HPC
@@ -173,8 +173,8 @@ local_data
 
 # mypy
 .mypy_cache/
-.dmypy.json
-dmypy.json
+# .dmypy.json
+# dmypy.json
 
 # Pyre type checker
 .pyre/
@@ -196,4 +196,5 @@ cython_debug/
 
 models
 
-local_data
+sampleRecord
+deploy_record
