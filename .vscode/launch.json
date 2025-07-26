@@ -17,21 +17,21 @@
             "--left_robot.port=/dev/ttyACM5",
             "--left_robot.id=calib_left_follower_arm",
             "--left_robot.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/robots/so101_follower",
-            "--left_robot.cameras={top: {type: opencv, index_or_path: 4, width: 1280, height: 800, fps: 15}, laptop: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 15}}",
+            "--left_robot.cameras={top: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 15}, laptop: {type: opencv, index_or_path: 6, width: 640, height: 480, fps: 15}}",
 
             "--right_robot.type=so101_follower",
             "--right_robot.port=/dev/ttyACM1",
             "--right_robot.id=calib_right_follower_arm",
             "--right_robot.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/robots/so101_follower",   
-            "--right_robot.cameras={top: {type: opencv, index_or_path: 4, width: 1280, height: 800, fps: 15}, laptop: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 15}}",
+            "--right_robot.cameras={laptop: {type: opencv, index_or_path: 8, width: 640, height: 480, fps: 15}}",
 
             "--left_teleop.type=so101_leader",
-            "--left_teleop.port=/dev/ttyACM2",
+            "--left_teleop.port=/dev/ttyACM0",
             "--left_teleop.id=calib_left_leader_arm",
             "--left_teleop.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/teleoperators/so101_leader",
 
             "--right_teleop.type=so101_leader",
-            "--right_teleop.port=/dev/ttyACM0",
+            "--right_teleop.port=/dev/ttyACM2",
             "--right_teleop.id=calib_right_leader_arm",
             "--right_teleop.calibration_dir=/home/qing/tianyi/code/lerobot_519b76110e/utilData/calibration/teleoperators/so101_leader",
 
