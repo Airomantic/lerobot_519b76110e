@@ -426,10 +426,15 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     policy = None if cfg.policy is None else make_policy(cfg.policy, ds_meta=dataset.meta)
 
     # 连接所有设备
-    for _, robot in robots:
+    for side, robot in robots:
+        logging.info(f"Connecting {side} robot: {robot}")
         robot.connect()
-    for _, teleop in teleops:
+        logging.info(f"{side} robot connected: {robot}")
+        
+    for side, teleop in teleops:
+        logging.info(f"Connecting {side} teleop: {teleop}")
         teleop.connect()
+        logging.info(f"{side} teleop connected: {teleop}")
 
     listener, events = init_keyboard_listener()
 
