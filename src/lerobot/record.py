@@ -442,10 +442,10 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
         log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
         record_loop(
-            robot=robot,
+            robots=robots,
             events=events,
             fps=cfg.dataset.fps,
-            teleop=teleop,
+            teleops=teleops,
             policy=policy,
             dataset=dataset,
             control_time_s=cfg.dataset.episode_time_s,
@@ -460,7 +460,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         ):
             log_say("Reset the environment", cfg.play_sounds)
             reset_loop(
-                robot=robot,
+                robots=robots,
                 events=events,
                 fps=cfg.dataset.fps,
                 # teleop=teleop,
