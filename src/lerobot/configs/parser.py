@@ -256,34 +256,34 @@ def wrap(config_path: Path | None = None):
                 args = args[1:]
             else:
                 # 解析索引参数
-                indexed_args = parse_indexed_args()
-                cli_args = []
+                # indexed_args = parse_indexed_args()
+                # cli_args = []
                 
-                # 处理非索引参数
-                non_indexed_args = indexed_args.get("non_indexed", {})
-                for key, value in non_indexed_args.items():
-                    cli_args.append(f"--{key}={value}")
+                # # 处理非索引参数
+                # non_indexed_args = indexed_args.get("non_indexed", {})
+                # for key, value in non_indexed_args.items():
+                #     cli_args.append(f"--{key}={value}")
                     
-                # 处理索引参数
-                for prefix, indices in indexed_args.items():
-                    if prefix == "non_indexed":
-                        continue
+                # # 处理索引参数
+                # for prefix, indices in indexed_args.items():
+                #     if prefix == "non_indexed":
+                #         continue
                     
-                    # 如果这是一个索引参数（包含'item'）
-                    if isinstance(indices, dict) and "item" in indices:
-                        for index, sub_args in indices["item"].items():
-                            for sub_key, sub_value in sub_args.items():
-                                cli_args.append(f"--{prefix}.{index}.{sub_key}={sub_value}")
+                #     # 如果这是一个索引参数（包含'item'）
+                #     if isinstance(indices, dict) and "item" in indices:
+                #         for index, sub_args in indices["item"].items():
+                #             for sub_key, sub_value in sub_args.items():
+                #                 cli_args.append(f"--{prefix}.{index}.{sub_key}={sub_value}")
                                 
-                    elif isinstance(indices, dict):
-                        # 如果这是一个非索引参数（没有'item'）
-                        for sub_key, sub_value in indices.items():
-                            cli_args.append(f"--{prefix}.{sub_key}={sub_value}")
-                    else:
-                        # 如果这是一个简单参数（没有'.'），如display_data是字符串
-                        cli_args.append(f"--{prefix}={indices}")
+                #     elif isinstance(indices, dict):
+                #         # 如果这是一个非索引参数（没有'item'）
+                #         for sub_key, sub_value in indices.items():
+                #             cli_args.append(f"--{prefix}.{sub_key}={sub_value}")
+                #     else:
+                #         # 如果这是一个简单参数（没有'.'），如display_data是字符串
+                #         cli_args.append(f"--{prefix}={indices}")
                 
-                # cli_args = sys.argv[1:]   # 原来没有left和right时
+                cli_args = sys.argv[1:]   # 原来没有left和right时
                 plugin_args = parse_plugin_args(PLUGIN_DISCOVERY_SUFFIX, cli_args)
                 for plugin_cli_arg, plugin_path in plugin_args.items():
                     try:
