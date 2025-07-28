@@ -17,6 +17,17 @@ from pathlib import Path
 
 from huggingface_hub.constants import HF_HOME
 
+# 添加双臂特定的常量
+OBS_STATE_LEFT = "left_observation.state"  # 新增左臂状态
+OBS_STATE_RIGHT = "right_observation.state"  # 新增右臂状态
+ACTION_LEFT = "left_action"  # 新增左臂动作
+ACTION_RIGHT = "right_action"  # 新增右臂动作
+
+# 双臂相机
+OBS_IMAGE_LEFT_TOP = "left_observation.images.top"
+OBS_IMAGE_LEFT_LAPTOP = "left_observation.images.laptop"
+OBS_IMAGE_RIGHT_LAPTOP = "right_observation.images.laptop"
+
 OBS_ENV_STATE = "observation.environment_state"
 OBS_STATE = "observation.state"
 OBS_IMAGE = "observation.image"
@@ -52,3 +63,4 @@ HF_LEROBOT_HOME = Path(os.getenv("HF_LEROBOT_HOME", default_cache_path)).expandu
 # calibration dir
 default_calibration_path = HF_LEROBOT_HOME / "calibration"
 HF_LEROBOT_CALIBRATION = Path(os.getenv("HF_LEROBOT_CALIBRATION", default_calibration_path)).expanduser()
+
