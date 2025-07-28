@@ -219,6 +219,7 @@ def record_loop(
     control_time_s: int | None = None,
     single_task: str | None = None,
     display_data: bool = False,
+    use_videos: bool = True,
 ):
     if dataset is not None and dataset.fps != fps:
         raise ValueError(f"The dataset fps should be equal to requested fps ({dataset.fps} != {fps}).")
@@ -269,8 +270,9 @@ def record_loop(
             obs = robot.get_observation()
             all_observations[side] = obs
             
-            # 构建观测帧
-            for key, value in build_dataset_frame(dataset.features, obs, prefix="observation").items():
+            # 构建观测帧，再做一次hw_to_dataset_features处理
+            obs_frame = build_dataset_frame(hw_to_dataset_features(robot.observation_features, "observation", use_videos), obs, prefix="observation")
+            for key, value in obs_frame.items():
                 frame[f"{side_prefix}{key}"] = value
 
         # if policy is not None or dataset is not None:
@@ -321,12 +323,10 @@ def record_loop(
                 sent_action = robot.send_action(all_actions[side])
                 
                 # 构建动作帧
-                for key, value in build_dataset_frame(dataset.features, sent_action, prefix="action").items():
+                action_frame = build_dataset_frame(hw_to_dataset_features(robot.action_features, "action", use_videos), sent_action, prefix="action")
+                for key, value in action_frame.items():
                     frame[f"{side_prefix}{key}"] = value
         
-        # 添加任务信息
-        frame["task"] = single_task
-
         # if dataset is not None:
         #     action_frame = build_dataset_frame(dataset.features, sent_action, prefix="action")
         #     frame = {**observation_frame, **action_frame}
@@ -385,6 +385,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         if hasattr(robot, "cameras"):
             camera_count += len(robot.cameras)
     
+    # 任务特征由数据集内部处理，不需要添加到特征中
     dataset_features = {**action_features, **obs_features}
         
     
@@ -428,11 +429,13 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     # 连接所有设备
     for side, robot in robots:
         logging.info(f"Connecting {side} robot: {robot}")
+        # robot.connect(calibrate=False)  # 跳过校准
         robot.connect()
         logging.info(f"{side} robot connected: {robot}")
         
     for side, teleop in teleops:
         logging.info(f"Connecting {side} teleop: {teleop}")
+        # teleop.connect(calibrate=False)  # 跳过校准
         teleop.connect()
         logging.info(f"{side} teleop connected: {teleop}")
 
@@ -451,6 +454,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             control_time_s=cfg.dataset.episode_time_s,
             single_task=cfg.dataset.single_task,
             display_data=cfg.display_data,
+            use_videos=cfg.dataset.video,
         )
 
         # Execute a few seconds without recording to give time to manually reset the environment
